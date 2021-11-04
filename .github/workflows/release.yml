@@ -1,0 +1,66 @@
+name: Build Extension
+
+on:
+  push:
+    branches: [ main, ci-sandbox ]
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  pull_request: 
+    branches: [ '**' ]
+
+jobs:
+  extension-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - name: Set up dependencies
+        run: |
+            sudo apt-get install -y doxygen nodejs
+            npm install --global yarn
+
+      - name: Get version information
+        id: version
+        working-directory: src
+        run: |
+           echo "::set-output name=semantic::$(node -p require\(\'../package.json\'\).version)"
+           echo "::set-output name=sha_short::$(echo ${{ github.sha }} | cut -c -7)"
+
+      - name: Just echoes the version
+        run: | 
+            echo ${{ steps.version.outputs.semantic }}+${{ steps.version.outputs.sha_short }} 
+
+      - name: Install yarn requirements
+        run: |
+            yarn install --frozen-lockfile
+            yarn bergamot-translator:download-and-import
+            # TODO: Setup Checks
+            yarn ci:install-firefox:linux
+            # Don't need telemetry.
+            
+      - name: Build Extension Firefox Infobar UI
+        run: |
+            yarn build:firefox-infobar-ui
+
+      - name: Build Extension Firefox Cross Browser UI
+        run: |
+            yarn build:cross-browser-ui:firefox
+
+      - name: Build Extension Chrome Cross Browser UI
+        run: |
+            yarn build:cross-browser-ui:chrome
+
+
+      - name: Upload built extensions
+        uses: actions/upload-artifact@v2
+        with:
+          name: bergamot-browser-extension-${{ steps.version.outputs.semantic }}+${{ steps.version.outputs.sha_short }}
+          path: |
+              dist/production/firefox/firefox-infobar-ui/firefox-translations-${{ steps.version.outputs.semantic }}.xpi
+              dist/production/firefox/cross-browser-ui/bergamot-browser-extension-${{ steps.version.outputs.semantic }}-firefox-cross-browser-ui.xpi
+              dist/production/chrome/cross-browser-ui/bergamot-browser-extension-${{ steps.version.outputs.semantic }}-chrome-cross-browser-ui.zip
+          if-no-files-found: error
+
+
